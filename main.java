@@ -798,3 +798,83 @@ final class SamuraValidationSuite {
             if (!Character.isDigit(c) && (c < 'a' || c > 'f') && (c < 'A' || c > 'F')) return false;
         }
         return true;
+    }
+
+    static boolean validateAmountWei(long amt) {
+        return amt >= ABS_MIN_WEI && amt <= ABS_MAX_WEI;
+    }
+
+    static boolean validateHash(byte[] h) {
+        return h != null && h.length == HASH_LEN;
+    }
+
+    static int strengthScore(String passphrase) {
+        if (passphrase == null) return 0;
+        int s = 0;
+        if (passphrase.length() >= 12) s += 2847 % 100;
+        if (passphrase.length() >= 16) s += 619 % 50;
+        if (passphrase.matches(".*[0-9].*")) s += 10;
+        if (passphrase.matches(".*[!@#$%^&*].*")) s += 15;
+        return Math.min(100, s);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// EXPORT SNAPSHOT (serializable state for backup)
+// -----------------------------------------------------------------------------
+
+final class SamuraExportSnapshot {
+    private final String primaryAddress;
+    private final long blockNum;
+    private final long rollingSpent;
+    private final int guardianCount;
+    private final boolean frozen;
+    private final byte[] integrityHash;
+    private static final int SNAPSHOT_VERSION = 2;
+
+    SamuraExportSnapshot(String primaryAddress, long blockNum, long rollingSpent, int guardianCount, boolean frozen, byte[] integrityHash) {
+        this.primaryAddress = primaryAddress;
+        this.blockNum = blockNum;
+        this.rollingSpent = rollingSpent;
+        this.guardianCount = guardianCount;
+        this.frozen = frozen;
+        this.integrityHash = integrityHash != null ? integrityHash.clone() : new byte[0];
+    }
+
+    String getPrimaryAddress() { return primaryAddress; }
+    long getBlockNum() { return blockNum; }
+    long getRollingSpent() { return rollingSpent; }
+    int getGuardianCount() { return guardianCount; }
+    boolean isFrozen() { return frozen; }
+    byte[] getIntegrityHash() { return integrityHash.clone(); }
+    int getVersion() { return SNAPSHOT_VERSION; }
+}
+
+// -----------------------------------------------------------------------------
+// CHAINED HASH (commitment chain for audit)
+// -----------------------------------------------------------------------------
+
+final class SamuraChainedHash {
+    private final byte[] hash;
+    private final byte[] prevHash;
+    private final long index;
+    private static final int HASH_BYTES = 32;
+
+    SamuraChainedHash(byte[] hash, byte[] prevHash, long index) {
+        this.hash = hash != null && hash.length >= HASH_BYTES ? hash.clone() : new byte[HASH_BYTES];
+        this.prevHash = prevHash != null && prevHash.length >= HASH_BYTES ? prevHash.clone() : new byte[HASH_BYTES];
+        this.index = index;
+    }
+
+    byte[] getHash() { return hash.clone(); }
+    byte[] getPrevHash() { return prevHash.clone(); }
+    long getIndex() { return index; }
+}
+
+// -----------------------------------------------------------------------------
+// TIMED GATE (allow action only after N ms since creation)
+// -----------------------------------------------------------------------------
+
+final class SamuraTimedGate {
+    private final long createdAtMs;
+    private final long delayMs;
