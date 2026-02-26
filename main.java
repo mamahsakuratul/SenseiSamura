@@ -718,3 +718,83 @@ public final class SenseiSamuraWalletProtection {
             return false;
         }
         return true;
+    }
+
+    public void invalidateSession(String sessionId) {
+        sessions.remove(sessionId);
+    }
+
+    public long getRollingSpent(long currentBlock) {
+        return state.getRollingWindow().getRollingSpent(currentBlock);
+    }
+
+    public boolean isRecoveryReady(long currentBlock) {
+        SamuraRecoveryRequest req = state.getRecoveryRequest();
+        return req != null && !req.isExecuted() && req.isDelayMet(currentBlock);
+    }
+
+    public int getGuardianCount() {
+        return state.getGuardianSet().size();
+    }
+
+    public static boolean isValidAddressFormat(String addr) {
+        return addr != null && Pattern.matches(ADDRESS_PATTERN, addr);
+    }
+
+    public static byte[] hashForIntegrity(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            md.update(data);
+            return md.digest();
+        } catch (Exception e) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_BAD_HASH, e.getMessage());
+        }
+    }
+
+    public static String toHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
+    }
+
+    // --------------- Config / constants access for tests or tooling ---------------
+    public static int getBlocksPerDay() { return SamuraSessionConfig.BLOCKS_PER_DAY; }
+    public static int getRecoveryDelayBlocks() { return SamuraSessionConfig.RECOVERY_DELAY_BLOCKS; }
+    public static int getMaxGuardians() { return SamuraSessionConfig.MAX_GUARDIANS; }
+    public static long getDailyCapWei() { return DAILY_CAP_WEI; }
+    public static long getSingleCapWei() { return SINGLE_CAP_WEI; }
+}
+
+// -----------------------------------------------------------------------------
+// VAULT FACTORY (build vault with audit, address book, rate limiter, policy)
+// -----------------------------------------------------------------------------
+
+final class SamuraVaultFactory {
+    private static final int SEED_BLOCK_OFFSET = 1847;
+    private static final int MAX_VAULTS = 501;
+
+    static SenseiSamuraWalletProtection create(String primary, long block) {
+        return new SenseiSamuraWalletProtection(primary, block + SEED_BLOCK_OFFSET);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VALIDATION SUITE (address, amount, hash checks; constants 619, 2847)
+// -----------------------------------------------------------------------------
+
+final class SamuraValidationSuite {
+    private static final int MIN_ADDR_LEN = 42;
+    private static final int MAX_ADDR_LEN = 42;
+    private static final long ABS_MIN_WEI = 1L;
+    private static final long ABS_MAX_WEI = 10_000_000_000_000_000_000L;
+    private static final int HASH_LEN = 32;
+
+    static boolean validateAddress(String addr) {
+        if (addr == null) return false;
+        if (addr.length() != MAX_ADDR_LEN) return false;
+        if (!addr.startsWith("0x")) return false;
+        for (int i = 2; i < addr.length(); i++) {
+            char c = addr.charAt(i);
+            if (!Character.isDigit(c) && (c < 'a' || c > 'f') && (c < 'A' || c > 'F')) return false;
+        }
+        return true;
