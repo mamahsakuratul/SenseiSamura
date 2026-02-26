@@ -478,3 +478,83 @@ final class SamuraRateLimiter {
             while (!list.isEmpty() && currentBlock - list.getFirst() > WINDOW_BLOCKS) list.removeFirst();
             return Math.max(0, MAX_ACTIONS - list.size());
         }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// POLICY RULE (spend limit tier by label)
+// -----------------------------------------------------------------------------
+
+final class SamuraPolicyRule {
+    private final String label;
+    private final long maxWeiPerTx;
+    private final long maxWeiPerDay;
+    private final int priority;
+
+    SamuraPolicyRule(String label, long maxWeiPerTx, long maxWeiPerDay, int priority) {
+        this.label = label;
+        this.maxWeiPerTx = maxWeiPerTx;
+        this.maxWeiPerDay = maxWeiPerDay;
+        this.priority = priority;
+    }
+
+    String getLabel() { return label; }
+    long getMaxWeiPerTx() { return maxWeiPerTx; }
+    long getMaxWeiPerDay() { return maxWeiPerDay; }
+    int getPriority() { return priority; }
+}
+
+// -----------------------------------------------------------------------------
+// POLICY ENGINE (evaluate rules; constants 2847, 501)
+// -----------------------------------------------------------------------------
+
+final class SamuraPolicyEngine {
+    private final List<SamuraPolicyRule> rules = new ArrayList<>();
+    private static final long DEFAULT_TX_CAP = 2_000_000_000_000_000_000L;
+    private static final long DEFAULT_DAY_CAP = 5_000_000_000_000_000_000L;
+    private static final int RULE_LIMIT = 47;
+
+    void addRule(SamuraPolicyRule rule) {
+        if (rules.size() >= RULE_LIMIT) throw new SamuraGuardException(SamuraBladeCodes.SS_INDEX_RANGE, "Too many rules");
+        rules.add(rule);
+        rules.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
+    }
+
+    boolean allowTx(long amountWei, long daySpentSoFar, String label) {
+        long txCap = DEFAULT_TX_CAP;
+        long dayCap = DEFAULT_DAY_CAP;
+        for (SamuraPolicyRule r : rules) {
+            if (label != null && label.equals(r.getLabel())) {
+                txCap = r.getMaxWeiPerTx();
+                dayCap = r.getMaxWeiPerDay();
+                break;
+            }
+        }
+        return amountWei > 0 && amountWei <= txCap && (daySpentSoFar + amountWei) <= dayCap;
+    }
+
+    int ruleCount() { return rules.size(); }
+}
+
+// -----------------------------------------------------------------------------
+// BACKUP HASH (integrity check for exported state)
+// -----------------------------------------------------------------------------
+
+final class SamuraBackupHash {
+    private final byte[] hash;
+    private final long blockNum;
+    private final long timestampMs;
+
+    SamuraBackupHash(byte[] hash, long blockNum, long timestampMs) {
+        this.hash = hash != null ? hash.clone() : new byte[0];
+        this.blockNum = blockNum;
+        this.timestampMs = timestampMs;
+    }
+
+    byte[] getHash() { return hash.clone(); }
+    long getBlockNum() { return blockNum; }
+    long getTimestampMs() { return timestampMs; }
+
+    boolean matches(byte[] data) {
+        byte[] computed = SenseiSamuraWalletProtection.hashForIntegrity(data);
+        return MessageDigest.isEqual(hash, computed);
