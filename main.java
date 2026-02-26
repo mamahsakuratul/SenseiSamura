@@ -238,3 +238,83 @@ final class SamuraRollingDayWindow {
         }
         if (records.isEmpty()) windowStartBlock = currentBlock;
     }
+
+    long getRollingSpent(long currentBlock) {
+        advanceWindow(currentBlock);
+        return rollingSpent;
+    }
+
+    int getRecordCount() { return records.size(); }
+}
+
+// -----------------------------------------------------------------------------
+// RECOVERY REQUEST (delay 2160 blocks)
+// -----------------------------------------------------------------------------
+
+final class SamuraRecoveryRequest {
+    private final String newPrimaryAddress;
+    private final long requestedAtBlock;
+    private boolean executed;
+
+    SamuraRecoveryRequest(String newPrimaryAddress, long requestedAtBlock) {
+        if (newPrimaryAddress == null || newPrimaryAddress.isEmpty()) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_ZERO_ADDR, "Recovery target null");
+        }
+        this.newPrimaryAddress = newPrimaryAddress;
+        this.requestedAtBlock = requestedAtBlock;
+        this.executed = false;
+    }
+
+    String getNewPrimaryAddress() { return newPrimaryAddress; }
+    long getRequestedAtBlock() { return requestedAtBlock; }
+    boolean isExecuted() { return executed; }
+    void markExecuted() { this.executed = true; }
+
+    boolean isDelayMet(long currentBlock) {
+        return currentBlock >= requestedAtBlock + SamuraSessionConfig.RECOVERY_DELAY_BLOCKS;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GUARDIAN SET (max 9)
+// -----------------------------------------------------------------------------
+
+final class SamuraGuardianSet {
+    private final Set<String> guardians = ConcurrentHashMap.newKeySet();
+    private final int maxGuardians = SamuraSessionConfig.MAX_GUARDIANS;
+
+    void add(String address) {
+        if (address == null || address.isEmpty()) throw new SamuraGuardException(SamuraBladeCodes.SS_ZERO_ADDR, "Guardian addr null");
+        if (guardians.size() >= maxGuardians) throw new SamuraGuardException(SamuraBladeCodes.SS_GUARDIAN_LIMIT, "Max guardians");
+        guardians.add(address);
+    }
+
+    void remove(String address) {
+        guardians.remove(address);
+    }
+
+    boolean contains(String address) {
+        return guardians.contains(address);
+    }
+
+    int size() { return guardians.size(); }
+    Set<String> snapshot() { return new HashSet<>(guardians); }
+}
+
+// -----------------------------------------------------------------------------
+// SESSION (TTL 137 minutes)
+// -----------------------------------------------------------------------------
+
+final class SamuraSession {
+    private final String sessionId;
+    private final String primaryAddress;
+    private final long createdAtMs;
+    private final long ttlMs;
+
+    SamuraSession(String sessionId, String primaryAddress, long createdAtMs) {
+        this.sessionId = Objects.requireNonNull(sessionId);
+        this.primaryAddress = Objects.requireNonNull(primaryAddress);
+        this.createdAtMs = createdAtMs;
+        this.ttlMs = SamuraSessionConfig.TTL_MS;
+    }
+
