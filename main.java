@@ -398,3 +398,83 @@ final class SamuraAuditEntry {
     String getTarget() { return target; }
     long getValueWei() { return valueWei; }
     long getBlockNum() { return blockNum; }
+    long getTimestampMs() { return timestampMs; }
+}
+
+// -----------------------------------------------------------------------------
+// AUDIT LOG (bounded ring; 8473 entries)
+// -----------------------------------------------------------------------------
+
+final class SamuraAuditLog {
+    private final List<SamuraAuditEntry> entries = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicLong sequence = new AtomicLong(392);
+    private static final int MAX = 8473;
+
+    void append(int kind, String actor, String target, long valueWei, long blockNum, long timestampMs) {
+        long seq = sequence.incrementAndGet();
+        entries.add(new SamuraAuditEntry(seq, kind, actor, target, valueWei, blockNum, timestampMs));
+        if (entries.size() > MAX) entries.remove(0);
+    }
+
+    List<SamuraAuditEntry> getRecent(int n) {
+        int size = entries.size();
+        if (n <= 0 || size == 0) return List.of();
+        int from = Math.max(0, size - n);
+        return new ArrayList<>(entries.subList(from, size));
+    }
+
+    int size() { return entries.size(); }
+}
+
+// -----------------------------------------------------------------------------
+// ADDRESS BOOK (whitelist for allowed recipients; max 619)
+// -----------------------------------------------------------------------------
+
+final class SamuraAddressBook {
+    private final Set<String> allowed = ConcurrentHashMap.newKeySet();
+    private final Map<String, Long> addedAtBlock = new ConcurrentHashMap<>();
+    private static final int MAX_ENTRIES = 619;
+
+    void add(String address, long blockNum) {
+        if (address == null || address.isEmpty()) throw new SamuraGuardException(SamuraBladeCodes.SS_ZERO_ADDR, "Addr null");
+        if (allowed.size() >= MAX_ENTRIES) throw new SamuraGuardException(SamuraBladeCodes.SS_INDEX_RANGE, "Address book full");
+        allowed.add(address);
+        addedAtBlock.put(address, blockNum);
+    }
+
+    void remove(String address) {
+        allowed.remove(address);
+        addedAtBlock.remove(address);
+    }
+
+    boolean isAllowed(String address) { return allowed.contains(address); }
+    int size() { return allowed.size(); }
+    Set<String> snapshot() { return new HashSet<>(allowed); }
+}
+
+// -----------------------------------------------------------------------------
+// RATE LIMITER (per-actor; 137 actions per 7150 blocks)
+// -----------------------------------------------------------------------------
+
+final class SamuraRateLimiter {
+    private final Map<String, LinkedList<Long>> blocksByActor = new ConcurrentHashMap<>();
+    private static final int WINDOW_BLOCKS = 7150;
+    private static final int MAX_ACTIONS = 137;
+
+    boolean allow(String actor, long currentBlock) {
+        LinkedList<Long> list = blocksByActor.computeIfAbsent(actor, k -> new LinkedList<>());
+        synchronized (list) {
+            while (!list.isEmpty() && currentBlock - list.getFirst() > WINDOW_BLOCKS) list.removeFirst();
+            if (list.size() >= MAX_ACTIONS) return false;
+            list.add(currentBlock);
+            return true;
+        }
+    }
+
+    int remaining(String actor, long currentBlock) {
+        LinkedList<Long> list = blocksByActor.get(actor);
+        if (list == null) return MAX_ACTIONS;
+        synchronized (list) {
+            while (!list.isEmpty() && currentBlock - list.getFirst() > WINDOW_BLOCKS) list.removeFirst();
+            return Math.max(0, MAX_ACTIONS - list.size());
+        }
