@@ -318,3 +318,83 @@ final class SamuraSession {
         this.ttlMs = SamuraSessionConfig.TTL_MS;
     }
 
+    boolean isExpired(long nowMs) {
+        return nowMs > createdAtMs + ttlMs;
+    }
+
+    String getSessionId() { return sessionId; }
+    String getPrimaryAddress() { return primaryAddress; }
+}
+
+// -----------------------------------------------------------------------------
+// VAULT STATE (primary, frozen, recovery)
+// -----------------------------------------------------------------------------
+
+final class SamuraVaultState {
+    private String primaryAddress;
+    private volatile boolean frozen;
+    private SamuraRecoveryRequest recoveryRequest;
+    private final SamuraGuardianSet guardianSet;
+    private final SamuraRollingDayWindow rollingWindow;
+    private long currentBlockSim;
+
+    SamuraVaultState(String primaryAddress, long initialBlock) {
+        if (primaryAddress == null || primaryAddress.isEmpty()) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_ZERO_ADDR, "Primary null");
+        }
+        this.primaryAddress = primaryAddress;
+        this.frozen = false;
+        this.recoveryRequest = null;
+        this.guardianSet = new SamuraGuardianSet();
+        this.rollingWindow = new SamuraRollingDayWindow(initialBlock);
+        this.currentBlockSim = initialBlock;
+    }
+
+    String getPrimaryAddress() { return primaryAddress; }
+    boolean isFrozen() { return frozen; }
+    void setFrozen(boolean f) { this.frozen = f; }
+    void setPrimaryAddress(String addr) { this.primaryAddress = addr; }
+    SamuraRecoveryRequest getRecoveryRequest() { return recoveryRequest; }
+    void setRecoveryRequest(SamuraRecoveryRequest r) { this.recoveryRequest = r; }
+    SamuraGuardianSet getGuardianSet() { return guardianSet; }
+    SamuraRollingDayWindow getRollingWindow() { return rollingWindow; }
+    long getCurrentBlockSim() { return currentBlockSim; }
+    void setCurrentBlockSim(long b) { this.currentBlockSim = b; }
+}
+
+// -----------------------------------------------------------------------------
+// AUDIT LOG ENTRY (immutable record)
+// -----------------------------------------------------------------------------
+
+final class SamuraAuditEntry {
+    private final long seq;
+    private final int kind;
+    private final String actor;
+    private final String target;
+    private final long valueWei;
+    private final long blockNum;
+    private final long timestampMs;
+    private static final int KIND_SPEND = 1;
+    private static final int KIND_RECOVERY_REQ = 2;
+    private static final int KIND_RECOVERY_EXEC = 3;
+    private static final int KIND_FREEZE = 4;
+    private static final int KIND_GUARDIAN_ADD = 5;
+    private static final int KIND_GUARDIAN_REMOVE = 6;
+    private static final int MAX_ENTRIES = 8473;
+
+    SamuraAuditEntry(long seq, int kind, String actor, String target, long valueWei, long blockNum, long timestampMs) {
+        this.seq = seq;
+        this.kind = kind;
+        this.actor = actor;
+        this.target = target;
+        this.valueWei = valueWei;
+        this.blockNum = blockNum;
+        this.timestampMs = timestampMs;
+    }
+
+    long getSeq() { return seq; }
+    int getKind() { return kind; }
+    String getActor() { return actor; }
+    String getTarget() { return target; }
+    long getValueWei() { return valueWei; }
+    long getBlockNum() { return blockNum; }
