@@ -558,3 +558,83 @@ final class SamuraBackupHash {
     boolean matches(byte[] data) {
         byte[] computed = SenseiSamuraWalletProtection.hashForIntegrity(data);
         return MessageDigest.isEqual(hash, computed);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ENCRYPTION ENVELOPE (stub: stores nonce + tag for AEAD-style)
+// -----------------------------------------------------------------------------
+
+final class SamuraEncryptionEnvelope {
+    private final byte[] nonce;
+    private final byte[] tag;
+    private final int version;
+    private static final int NONCE_LEN = 24;
+    private static final int TAG_LEN = 16;
+    private static final int VERSION = 3;
+
+    SamuraEncryptionEnvelope(byte[] nonce, byte[] tag, int version) {
+        this.nonce = nonce != null && nonce.length >= NONCE_LEN ? nonce.clone() : new byte[NONCE_LEN];
+        this.tag = tag != null && tag.length >= TAG_LEN ? tag.clone() : new byte[TAG_LEN];
+        this.version = version >= 1 ? version : VERSION;
+    }
+
+    static SamuraEncryptionEnvelope createNew() {
+        SecureRandom sr = new SecureRandom();
+        byte[] nonce = new byte[NONCE_LEN];
+        byte[] tag = new byte[TAG_LEN];
+        sr.nextBytes(nonce);
+        sr.nextBytes(tag);
+        return new SamuraEncryptionEnvelope(nonce, tag, VERSION);
+    }
+
+    byte[] getNonce() { return nonce.clone(); }
+    byte[] getTag() { return tag.clone(); }
+    int getVersion() { return version; }
+}
+
+// -----------------------------------------------------------------------------
+// APPROVAL DELAY (432 blocks cooldown)
+// -----------------------------------------------------------------------------
+
+final class SamuraApprovalDelay {
+    private long lastApprovalBlock;
+    private static final int COOLDOWN = SamuraSessionConfig.APPROVAL_COOLDOWN_BLOCKS;
+
+    SamuraApprovalDelay(long currentBlock) {
+        this.lastApprovalBlock = 0;
+    }
+
+    boolean canApprove(long currentBlock) {
+        return currentBlock >= lastApprovalBlock + COOLDOWN;
+    }
+
+    void recordApproval(long currentBlock) {
+        this.lastApprovalBlock = currentBlock;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MAIN VAULT CONTROLLER (orchestrates all)
+// -----------------------------------------------------------------------------
+
+public final class SenseiSamuraWalletProtection {
+    private final SamuraVaultState state;
+    private final Map<String, SamuraSession> sessions = new ConcurrentHashMap<>();
+    private final AtomicLong sessionCounter = new AtomicLong(2103);
+    private static final long DAILY_CAP_WEI = 5_000_000_000_000_000_000L;
+    private static final long SINGLE_CAP_WEI = 2_000_000_000_000_000_000L;
+    private static final String ADDRESS_PATTERN = "0x[0-9a-fA-F]{40}";
+
+    public SenseiSamuraWalletProtection(String primaryAddress, long initialBlock) {
+        this.state = new SamuraVaultState(primaryAddress, initialBlock);
+    }
+
+    public String getPrimaryAddress() {
+        return state.getPrimaryAddress();
+    }
+
+    public boolean isFrozen() {
+        return state.isFrozen();
+    }
+
