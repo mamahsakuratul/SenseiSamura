@@ -638,3 +638,83 @@ public final class SenseiSamuraWalletProtection {
         return state.isFrozen();
     }
 
+    public void requestRecovery(String requesterAddress, String newPrimaryAddress, long currentBlock) {
+        if (state.isFrozen()) throw new SamuraGuardException(SamuraBladeCodes.SS_VAULT_LOCKED, "Vault frozen");
+        if (!state.getGuardianSet().contains(requesterAddress)) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_GUARDIAN, "Not guardian");
+        }
+        if (state.getRecoveryRequest() != null && !state.getRecoveryRequest().isExecuted()) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_RECOVERY_ACTIVE, "Recovery already requested");
+        }
+        state.setRecoveryRequest(new SamuraRecoveryRequest(newPrimaryAddress, currentBlock));
+    }
+
+    public void executeRecovery(String executorAddress, long currentBlock) {
+        if (state.isFrozen()) throw new SamuraGuardException(SamuraBladeCodes.SS_VAULT_LOCKED, "Vault frozen");
+        SamuraRecoveryRequest req = state.getRecoveryRequest();
+        if (req == null) throw new SamuraGuardException(SamuraBladeCodes.SS_DELAY_NOT_MET, "No recovery requested");
+        if (req.isExecuted()) throw new SamuraGuardException(SamuraBladeCodes.SS_ALREADY_SET, "Recovery already executed");
+        if (!req.isDelayMet(currentBlock)) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_DELAY_NOT_MET, "Delay not met");
+        }
+        req.markExecuted();
+        state.setPrimaryAddress(req.getNewPrimaryAddress());
+    }
+
+    public void addGuardian(String primaryAddress, String guardianAddress) {
+        if (!primaryAddress.equals(state.getPrimaryAddress())) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_PRIMARY, "Not primary");
+        }
+        state.getGuardianSet().add(guardianAddress);
+    }
+
+    public void removeGuardian(String primaryAddress, String guardianAddress) {
+        if (!primaryAddress.equals(state.getPrimaryAddress())) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_PRIMARY, "Not primary");
+        }
+        state.getGuardianSet().remove(guardianAddress);
+    }
+
+    public void setFrozen(String callerAddress, boolean frozen) {
+        boolean isPrimary = callerAddress.equals(state.getPrimaryAddress());
+        boolean isGuardian = state.getGuardianSet().contains(callerAddress);
+        if (!isPrimary && !isGuardian) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_GUARDIAN, "Not primary or guardian");
+        }
+        state.setFrozen(frozen);
+    }
+
+    public void recordSpend(String primaryAddress, String toAddress, long amountWei, long currentBlock, long timestampMs) {
+        if (!primaryAddress.equals(state.getPrimaryAddress())) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_PRIMARY, "Not primary");
+        }
+        if (state.isFrozen()) throw new SamuraGuardException(SamuraBladeCodes.SS_VAULT_LOCKED, "Vault frozen");
+        if (amountWei <= 0 || amountWei > SINGLE_CAP_WEI) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_SINGLE_CAP, "Amount out of single cap");
+        }
+        SamuraRollingDayWindow w = state.getRollingWindow();
+        long spent = w.getRollingSpent(currentBlock);
+        if (spent + amountWei > DAILY_CAP_WEI) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_DAILY_CAP, "Daily cap exceeded");
+        }
+        w.addSpend(toAddress, amountWei, currentBlock, timestampMs);
+        state.setCurrentBlockSim(currentBlock);
+    }
+
+    public String createSession(String primaryAddress, long nowMs) {
+        if (!primaryAddress.equals(state.getPrimaryAddress())) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_NOT_PRIMARY, "Not primary");
+        }
+        String sessionId = "ss_" + sessionCounter.incrementAndGet() + "_" + System.nanoTime();
+        sessions.put(sessionId, new SamuraSession(sessionId, primaryAddress, nowMs));
+        return sessionId;
+    }
+
+    public boolean validateSession(String sessionId, long nowMs) {
+        SamuraSession s = sessions.get(sessionId);
+        if (s == null) return false;
+        if (s.isExpired(nowMs)) {
+            sessions.remove(sessionId);
+            return false;
+        }
+        return true;
