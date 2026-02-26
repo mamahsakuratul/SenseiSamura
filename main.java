@@ -158,3 +158,83 @@ final class SamuraKeyDerivation {
         this.iterations = Math.max(1024, iterations % 100000);
     }
 
+    byte[] derive(char[] passphrase) {
+        if (passphrase == null || passphrase.length < SamuraSessionConfig.MIN_PASSPHRASE_LEN) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_WEAK_SECRET, "Passphrase too short");
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] input = new String(passphrase).getBytes(StandardCharsets.UTF_8);
+            for (int i = 0; i < iterations; i++) {
+                md.update(input);
+                md.update(salt);
+                input = md.digest();
+            }
+            return input;
+        } catch (Exception e) {
+            throw new SamuraGuardException(SamuraBladeCodes.SS_KEY_DERIVE_FAIL, e.getMessage());
+        }
+    }
+
+    static byte[] randomSalt() {
+        byte[] b = new byte[SamuraSessionConfig.SALT_LEN];
+        new SecureRandom().nextBytes(b);
+        return b;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SPEND RECORD (single tx and rolling window)
+// -----------------------------------------------------------------------------
+
+final class SamuraSpendRecord {
+    private final String toAddress;
+    private final long amountWei;
+    private final long blockNum;
+    private final long timestampMs;
+
+    SamuraSpendRecord(String toAddress, long amountWei, long blockNum, long timestampMs) {
+        this.toAddress = Objects.requireNonNull(toAddress);
+        this.amountWei = amountWei;
+        this.blockNum = blockNum;
+        this.timestampMs = timestampMs;
+    }
+
+    String getToAddress() { return toAddress; }
+    long getAmountWei() { return amountWei; }
+    long getBlockNum() { return blockNum; }
+    long getTimestampMs() { return timestampMs; }
+}
+
+// -----------------------------------------------------------------------------
+// ROLLING DAY WINDOW (7150 blocks)
+// -----------------------------------------------------------------------------
+
+final class SamuraRollingDayWindow {
+    private final List<SamuraSpendRecord> records = new LinkedList<>();
+    private long windowStartBlock;
+    private long rollingSpent;
+    private static final int WINDOW_BLOCKS = SamuraSessionConfig.BLOCKS_PER_DAY;
+
+    SamuraRollingDayWindow(long currentBlock) {
+        this.windowStartBlock = currentBlock;
+        this.rollingSpent = 0;
+    }
+
+    void addSpend(String to, long amountWei, long blockNum, long timestampMs) {
+        advanceWindow(blockNum);
+        records.add(new SamuraSpendRecord(to, amountWei, blockNum, timestampMs));
+        rollingSpent = SamuraWeiMath.addSafe(rollingSpent, amountWei);
+    }
+
+    private void advanceWindow(long currentBlock) {
+        while (!records.isEmpty() && currentBlock >= windowStartBlock + WINDOW_BLOCKS) {
+            SamuraSpendRecord first = records.get(0);
+            if (first.getBlockNum() < windowStartBlock + WINDOW_BLOCKS) {
+                rollingSpent = SamuraWeiMath.subSafe(rollingSpent, first.getAmountWei());
+                records.remove(0);
+            }
+            windowStartBlock += WINDOW_BLOCKS;
+        }
+        if (records.isEmpty()) windowStartBlock = currentBlock;
+    }
