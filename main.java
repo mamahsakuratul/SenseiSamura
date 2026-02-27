@@ -958,3 +958,83 @@ final class SamuraWalletMetadata {
     private final String networkId;
     private static final int MAX_NETWORK_LEN = 32;
 
+    SamuraWalletMetadata(String walletId, long createdAtMs, String networkId) {
+        this.walletId = walletId != null ? walletId : "";
+        this.createdAtMs = createdAtMs;
+        this.networkId = networkId != null && networkId.length() <= MAX_NETWORK_LEN ? networkId : "evm";
+    }
+
+    String getWalletId() { return walletId; }
+    long getCreatedAtMs() { return createdAtMs; }
+    String getNetworkId() { return networkId; }
+}
+
+// -----------------------------------------------------------------------------
+// EVENT TYPES (for audit event kind)
+// -----------------------------------------------------------------------------
+
+final class SamuraEventTypes {
+    static final int EVENT_SPEND = 1;
+    static final int EVENT_RECOVERY_REQUEST = 2;
+    static final int EVENT_RECOVERY_EXECUTE = 3;
+    static final int EVENT_FREEZE = 4;
+    static final int EVENT_GUARDIAN_ADD = 5;
+    static final int EVENT_GUARDIAN_REMOVE = 6;
+    static final int EVENT_SESSION_CREATE = 7;
+    static final int EVENT_SESSION_INVALIDATE = 8;
+    static final int EVENT_POLICY_UPDATE = 9;
+    static final int MAX_TYPE = 9;
+
+    static String nameOf(int kind) {
+        switch (kind) {
+            case EVENT_SPEND: return "SPEND";
+            case EVENT_RECOVERY_REQUEST: return "RECOVERY_REQUEST";
+            case EVENT_RECOVERY_EXECUTE: return "RECOVERY_EXECUTE";
+            case EVENT_FREEZE: return "FREEZE";
+            case EVENT_GUARDIAN_ADD: return "GUARDIAN_ADD";
+            case EVENT_GUARDIAN_REMOVE: return "GUARDIAN_REMOVE";
+            case EVENT_SESSION_CREATE: return "SESSION_CREATE";
+            case EVENT_SESSION_INVALIDATE: return "SESSION_INVALIDATE";
+            case EVENT_POLICY_UPDATE: return "POLICY_UPDATE";
+            default: return "UNKNOWN";
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// COOLDOWN TRACKER (per-action type; blocks 432, 864, 1296)
+// -----------------------------------------------------------------------------
+
+final class SamuraCooldownTracker {
+    private final Map<String, Long> lastActionBlock = new ConcurrentHashMap<>();
+    private final int cooldownBlocks;
+    private static final int COOLDOWN_SHORT = 432;
+    private static final int COOLDOWN_MED = 864;
+    private static final int COOLDOWN_LONG = 1296;
+
+    SamuraCooldownTracker(int cooldownBlocks) {
+        this.cooldownBlocks = Math.max(1, cooldownBlocks);
+    }
+
+    static SamuraCooldownTracker short_() { return new SamuraCooldownTracker(COOLDOWN_SHORT); }
+    static SamuraCooldownTracker medium() { return new SamuraCooldownTracker(COOLDOWN_MED); }
+    static SamuraCooldownTracker long_() { return new SamuraCooldownTracker(COOLDOWN_LONG); }
+
+    boolean canAct(String actor, long currentBlock) {
+        Long last = lastActionBlock.get(actor);
+        return last == null || currentBlock >= last + cooldownBlocks;
+    }
+
+    void record(String actor, long currentBlock) {
+        lastActionBlock.put(actor, currentBlock);
+    }
+
+    long blocksRemaining(String actor, long currentBlock) {
+        Long last = lastActionBlock.get(actor);
+        if (last == null) return 0;
+        long end = last + cooldownBlocks;
+        return currentBlock >= end ? 0 : end - currentBlock;
+    }
+}
+
+// -----------------------------------------------------------------------------
