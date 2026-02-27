@@ -878,3 +878,83 @@ final class SamuraChainedHash {
 final class SamuraTimedGate {
     private final long createdAtMs;
     private final long delayMs;
+    private static final long DEFAULT_DELAY_MS = 137_000L;
+    private static final long MAX_DELAY_MS = 2_160_000L;
+
+    SamuraTimedGate(long createdAtMs, long delayMs) {
+        this.createdAtMs = createdAtMs;
+        this.delayMs = Math.min(MAX_DELAY_MS, Math.max(0, delayMs));
+    }
+
+    static SamuraTimedGate withDefault(long createdAtMs) {
+        return new SamuraTimedGate(createdAtMs, DEFAULT_DELAY_MS);
+    }
+
+    boolean isOpen(long nowMs) {
+        return nowMs >= createdAtMs + delayMs;
+    }
+
+    long remainingMs(long nowMs) {
+        long end = createdAtMs + delayMs;
+        return nowMs >= end ? 0 : end - nowMs;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MULTI-SIG THRESHOLD (N-of-M approval)
+// -----------------------------------------------------------------------------
+
+final class SamuraMultiSigThreshold {
+    private final int required;
+    private final int total;
+    private final Set<String> approved = ConcurrentHashMap.newKeySet();
+    private static final int MAX_SIGNERS = 9;
+    private static final int MIN_REQUIRED = 1;
+
+    SamuraMultiSigThreshold(int required, int total) {
+        this.total = Math.min(MAX_SIGNERS, Math.max(1, total));
+        this.required = Math.min(this.total, Math.max(MIN_REQUIRED, required));
+    }
+
+    void addApproval(String signer) {
+        if (signer != null && !signer.isEmpty()) approved.add(signer);
+    }
+
+    boolean isMet() { return approved.size() >= required; }
+    int getApprovalCount() { return approved.size(); }
+    int getRequired() { return required; }
+    int getTotal() { return total; }
+}
+
+// -----------------------------------------------------------------------------
+// SPEND CATEGORY (label + cap multiplier; 0.1 to 2.0)
+// -----------------------------------------------------------------------------
+
+final class SamuraSpendCategory {
+    private final String id;
+    private final double capMultiplier;
+    private final int priority;
+    private static final double MIN_MULT = 0.1;
+    private static final double MAX_MULT = 2.0;
+
+    SamuraSpendCategory(String id, double capMultiplier, int priority) {
+        this.id = id;
+        this.capMultiplier = Math.max(MIN_MULT, Math.min(MAX_MULT, capMultiplier));
+        this.priority = priority;
+    }
+
+    String getId() { return id; }
+    double getCapMultiplier() { return capMultiplier; }
+    int getPriority() { return priority; }
+}
+
+// -----------------------------------------------------------------------------
+// WALLET METADATA (non-sensitive labels)
+// -----------------------------------------------------------------------------
+
+final class SamuraWalletMetadata {
+    private final String walletId;
+    private final long createdAtMs;
+    private final String networkId;
+    private static final int MAX_NETWORK_LEN = 32;
+
