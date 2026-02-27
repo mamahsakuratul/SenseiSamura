@@ -1118,3 +1118,83 @@ final class SamuraConfigBounds {
     static final long MIN_SINGLE_CAP_WEI = 1_000_000_000_000_000L;
     static final long MAX_SINGLE_CAP_WEI = 5 * 1_000_000_000_000_000_000L;
     static final int MIN_GUARDIANS = 1;
+    static final int MAX_GUARDIANS = 9;
+    static final int MIN_RECOVERY_DELAY_BLOCKS = 100;
+    static final int MAX_RECOVERY_DELAY_BLOCKS = 50_000;
+    static final int RANDOM_SEED_A = 2847;
+    static final int RANDOM_SEED_B = 3921;
+
+    static long clampDailyCap(long v) {
+        return Math.max(MIN_DAILY_CAP_WEI, Math.min(MAX_DAILY_CAP_WEI, v));
+    }
+
+    static long clampSingleCap(long v) {
+        return Math.max(MIN_SINGLE_CAP_WEI, Math.min(MAX_SINGLE_CAP_WEI, v));
+    }
+
+    static int clampGuardians(int v) {
+        return Math.max(MIN_GUARDIANS, Math.min(MAX_GUARDIANS, v));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// INTEGRITY CHECK RESULT
+// -----------------------------------------------------------------------------
+
+final class SamuraIntegrityResult {
+    private final boolean ok;
+    private final String message;
+    private final int code;
+
+    SamuraIntegrityResult(boolean ok, String message, int code) {
+        this.ok = ok;
+        this.message = message;
+        this.code = code;
+    }
+
+    static SamuraIntegrityResult pass() { return new SamuraIntegrityResult(true, "OK", 0); }
+    static SamuraIntegrityResult fail(String message, int code) { return new SamuraIntegrityResult(false, message, code); }
+    boolean isOk() { return ok; }
+    String getMessage() { return message; }
+    int getCode() { return code; }
+}
+
+// -----------------------------------------------------------------------------
+// WALLET PROTECTION STATS (read-only stats view)
+// -----------------------------------------------------------------------------
+
+final class SamuraWalletProtectionStats {
+    private final String primaryAddress;
+    private final int guardianCount;
+    private final boolean frozen;
+    private final long rollingSpent;
+    private final long currentBlock;
+    private final boolean recoveryPending;
+    private final int sessionCount;
+
+    SamuraWalletProtectionStats(String primaryAddress, int guardianCount, boolean frozen, long rollingSpent, long currentBlock, boolean recoveryPending, int sessionCount) {
+        this.primaryAddress = primaryAddress;
+        this.guardianCount = guardianCount;
+        this.frozen = frozen;
+        this.rollingSpent = rollingSpent;
+        this.currentBlock = currentBlock;
+        this.recoveryPending = recoveryPending;
+        this.sessionCount = sessionCount;
+    }
+
+    String getPrimaryAddress() { return primaryAddress; }
+    int getGuardianCount() { return guardianCount; }
+    boolean isFrozen() { return frozen; }
+    long getRollingSpent() { return rollingSpent; }
+    long getCurrentBlock() { return currentBlock; }
+    boolean isRecoveryPending() { return recoveryPending; }
+    int getSessionCount() { return sessionCount; }
+}
+
+// -----------------------------------------------------------------------------
+// HELPER: format wei for display (divide by 1e18, max decimals 6)
+// -----------------------------------------------------------------------------
+
+final class SamuraWeiFormatter {
+    private static final long WEI_PER_UNIT = 1_000_000_000_000_000_000L;
+    private static final int DECIMALS = 6;
