@@ -1038,3 +1038,83 @@ final class SamuraCooldownTracker {
 }
 
 // -----------------------------------------------------------------------------
+// ALLOWLIST CHECKER (optional allowlist for destinations)
+// -----------------------------------------------------------------------------
+
+final class SamuraAllowlistChecker {
+    private final Set<String> allowed = ConcurrentHashMap.newKeySet();
+    private volatile boolean enforceAllowlist;
+    private static final int MAX_ALLOWED = 619;
+
+    void setEnforce(boolean enforce) { this.enforceAllowlist = enforce; }
+    boolean isEnforcing() { return enforceAllowlist; }
+
+    void add(String address) {
+        if (address == null || allowed.size() >= MAX_ALLOWED) return;
+        allowed.add(address);
+    }
+
+    void remove(String address) { allowed.remove(address); }
+    boolean isAllowed(String address) { return !enforceAllowlist || allowed.contains(address); }
+    int size() { return allowed.size(); }
+}
+
+// -----------------------------------------------------------------------------
+// BLOCK WINDOW (current block range for validity)
+// -----------------------------------------------------------------------------
+
+final class SamuraBlockWindow {
+    private final long startBlock;
+    private final long lengthBlocks;
+    private static final int DEFAULT_LENGTH = 7150;
+
+    SamuraBlockWindow(long startBlock, long lengthBlocks) {
+        this.startBlock = startBlock;
+        this.lengthBlocks = lengthBlocks > 0 ? lengthBlocks : DEFAULT_LENGTH;
+    }
+
+    boolean contains(long blockNum) {
+        return blockNum >= startBlock && blockNum < startBlock + lengthBlocks;
+    }
+
+    long getEndBlock() { return startBlock + lengthBlocks; }
+}
+
+// -----------------------------------------------------------------------------
+// PENDING ACTION (queued recovery or spend for delay)
+// -----------------------------------------------------------------------------
+
+final class SamuraPendingAction {
+    private final int actionType;
+    private final String initiator;
+    private final String target;
+    private final long valueWei;
+    private final long createdAtBlock;
+    private static final int TYPE_RECOVERY = 1;
+    private static final int TYPE_LARGE_SPEND = 2;
+
+    SamuraPendingAction(int actionType, String initiator, String target, long valueWei, long createdAtBlock) {
+        this.actionType = actionType;
+        this.initiator = initiator;
+        this.target = target;
+        this.valueWei = valueWei;
+        this.createdAtBlock = createdAtBlock;
+    }
+
+    int getActionType() { return actionType; }
+    String getInitiator() { return initiator; }
+    String getTarget() { return target; }
+    long getValueWei() { return valueWei; }
+    long getCreatedAtBlock() { return createdAtBlock; }
+}
+
+// -----------------------------------------------------------------------------
+// CONFIG BOUNDS (min/max for caps; 501, 2847, 3921)
+// -----------------------------------------------------------------------------
+
+final class SamuraConfigBounds {
+    static final long MIN_DAILY_CAP_WEI = 501 * 1_000_000_000_000_000L;
+    static final long MAX_DAILY_CAP_WEI = 10 * 1_000_000_000_000_000_000L;
+    static final long MIN_SINGLE_CAP_WEI = 1_000_000_000_000_000L;
+    static final long MAX_SINGLE_CAP_WEI = 5 * 1_000_000_000_000_000_000L;
+    static final int MIN_GUARDIANS = 1;
