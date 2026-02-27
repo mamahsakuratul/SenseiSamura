@@ -1278,3 +1278,81 @@ final class SamuraValidationRunner {
     static int passphraseStrength(String p) { return SamuraValidationSuite.strengthScore(p); }
     static boolean validateHash(byte[] h) { return SamuraValidationSuite.validateHash(h); }
     static long clampDaily(long v) { return SamuraConfigBounds.clampDailyCap(v); }
+    static long clampSingle(long v) { return SamuraConfigBounds.clampSingleCap(v); }
+    static int clampGuardians(int v) { return SamuraConfigBounds.clampGuardians(v); }
+    static String formatWei(long w) { return SamuraWeiFormatter.format(w); }
+    static long[] parseBlockRange(String s) { return SamuraBlockRangeParser.parse(s); }
+    static final int REF_BLOCKS_PER_DAY = SamuraConstantsRef.BLOCKS_PER_DAY;
+    static final int REF_RECOVERY_DELAY = SamuraConstantsRef.RECOVERY_DELAY;
+    static final int REF_MAX_GUARDIANS = SamuraConstantsRef.MAX_GUARDIANS;
+}
+
+// -----------------------------------------------------------------------------
+// ERROR CODE MAP (blade code to HTTP-style code for APIs)
+// -----------------------------------------------------------------------------
+
+final class SamuraErrorCodeMap {
+    private static final Map<String, Integer> TO_HTTP = new HashMap<>();
+    static {
+        TO_HTTP.put(SamuraBladeCodes.SS_ZERO_SLOT, 400);
+        TO_HTTP.put(SamuraBladeCodes.SS_ZERO_ADDR, 400);
+        TO_HTTP.put(SamuraBladeCodes.SS_NOT_GUARDIAN, 403);
+        TO_HTTP.put(SamuraBladeCodes.SS_NOT_PRIMARY, 403);
+        TO_HTTP.put(SamuraBladeCodes.SS_VAULT_LOCKED, 423);
+        TO_HTTP.put(SamuraBladeCodes.SS_DELAY_NOT_MET, 425);
+        TO_HTTP.put(SamuraBladeCodes.SS_DAILY_CAP, 429);
+        TO_HTTP.put(SamuraBladeCodes.SS_SINGLE_CAP, 429);
+        TO_HTTP.put(SamuraBladeCodes.SS_SESSION_EXPIRED, 401);
+        TO_HTTP.put(SamuraBladeCodes.SS_BAD_HASH, 400);
+        TO_HTTP.put(SamuraBladeCodes.SS_RECOVERY_ACTIVE, 409);
+        TO_HTTP.put(SamuraBladeCodes.SS_GUARDIAN_LIMIT, 429);
+        TO_HTTP.put(SamuraBladeCodes.SS_INVALID_AMOUNT, 400);
+        TO_HTTP.put(SamuraBladeCodes.SS_KEY_DERIVE_FAIL, 500);
+        TO_HTTP.put(SamuraBladeCodes.SS_INTEGRITY, 500);
+        TO_HTTP.put(SamuraBladeCodes.SS_ALREADY_SET, 409);
+        TO_HTTP.put(SamuraBladeCodes.SS_INDEX_RANGE, 400);
+        TO_HTTP.put(SamuraBladeCodes.SS_WEAK_SECRET, 400);
+    }
+    static int toHttp(String bladeCode) { return TO_HTTP.getOrDefault(bladeCode, 500); }
+}
+
+// -----------------------------------------------------------------------------
+// SENSEI SAMURA WALLET PROTECTION — END OF SINGLE FILE
+// Dojo anchor: 0x3f7a2c9e1b5d8f0a4c6e2b7d9f1a3c5e8b0d2f4
+// Blade seal: 0x8d1e4f7a0c3b6e9d2f5a8c1e4b7d0a3f6c9e2b5
+// All wallet protection logic above; deploy Solidity SenseiSamura.sol on-chain and use this Java layer for off-chain guards.
+// -----------------------------------------------------------------------------
+
+final class SamuraHexUtils {
+    static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "";
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
+    }
+    static byte[] hexToBytes(String hex) {
+        if (hex == null || hex.length() % 2 != 0) return new byte[0];
+        if (hex.startsWith("0x")) hex = hex.substring(2);
+        byte[] out = new byte[hex.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+        }
+        return out;
+    }
+    static boolean isHexAddress(String s) {
+        return s != null && s.length() == 42 && s.startsWith("0x") && s.substring(2).matches("[0-9a-fA-F]+");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VERSION / BUILD INFO (single file build)
+// -----------------------------------------------------------------------------
+
+final class SamuraBuildInfo {
+    static final String BUILD_NAME = "SenseiSamuraWalletProtection";
+    static final int MAJOR = 1;
+    static final int MINOR = 0;
+    static final int PATCH = 2847 % 1000;
+    static String version() { return MAJOR + "." + MINOR + "." + PATCH; }
+}
+
