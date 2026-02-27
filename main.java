@@ -1198,3 +1198,83 @@ final class SamuraWalletProtectionStats {
 final class SamuraWeiFormatter {
     private static final long WEI_PER_UNIT = 1_000_000_000_000_000_000L;
     private static final int DECIMALS = 6;
+
+    static String format(long wei) {
+        long whole = wei / WEI_PER_UNIT;
+        long frac = (wei % WEI_PER_UNIT) / (WEI_PER_UNIT / (long) Math.pow(10, DECIMALS));
+        return whole + "." + String.format("%0" + DECIMALS + "d", frac).replaceFirst("0+$", "").replaceAll("^0", "");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// HELPER: parse block range from string "start:end"
+// -----------------------------------------------------------------------------
+
+final class SamuraBlockRangeParser {
+    static long[] parse(String range) {
+        if (range == null || !range.contains(":")) return new long[] { 0L, 7150L };
+        String[] parts = range.split(":");
+        try {
+            long a = Long.parseLong(parts[0].trim());
+            long b = Long.parseLong(parts[1].trim());
+            return new long[] { Math.min(a, b), Math.max(a, b) };
+        } catch (NumberFormatException e) {
+            return new long[] { 0L, 7150L };
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// CONSTANTS REFERENCE (all magic numbers in one place; 619, 2847, 3921, 8473, 501)
+// -----------------------------------------------------------------------------
+
+final class SamuraConstantsRef {
+    static final int SALT_LEN = 32;
+    static final int NONCE_LEN = 24;
+    static final int TAG_LEN = 16;
+    static final int HASH_BYTES = 32;
+    static final int BLOCKS_PER_DAY = 7150;
+    static final int RECOVERY_DELAY = 2160;
+    static final int APPROVAL_COOLDOWN = 432;
+    static final int MAX_GUARDIANS = 9;
+    static final int MAX_AUDIT_ENTRIES = 8473;
+    static final int MAX_ADDRESS_BOOK = 619;
+    static final int RATE_LIMIT_ACTIONS = 137;
+    static final int RATE_WINDOW_BLOCKS = 7150;
+    static final int POLICY_RULE_LIMIT = 47;
+    static final long TTL_SESSION_MS = 137 * 60 * 1000L;
+    static final int SEED_A = 2847;
+    static final int SEED_B = 3921;
+    static final int SEED_C = 501;
+}
+
+// -----------------------------------------------------------------------------
+// RUNNER / DEMO (optional main for standalone run)
+// -----------------------------------------------------------------------------
+
+final class SamuraRunner {
+    static void runDemo() {
+        String primary = "0x4a8c2E7b1F5d9A3c6e0B4D8f2A5b7C9d1E3f6A8";
+        long block = 1000;
+        SenseiSamuraWalletProtection vault = new SenseiSamuraWalletProtection(primary, block);
+        vault.addGuardian(primary, "0x7B3d9F1a5C8e2b4D6f0A3c5E7b9d1F4a6C8e0B2");
+        vault.requestRecovery("0x7B3d9F1a5C8e2b4D6f0A3c5E7b9d1F4a6C8e0B2", "0x9E1f4A7c2D5b8E0a3C6d9F1b4A7c0D2e5F8a1B3", block);
+        long recoverableAt = block + SamuraSessionConfig.RECOVERY_DELAY_BLOCKS;
+        vault.recordSpend(primary, "0xC2e5A8b1D4f7c0E3a6B9d2F5c8A1e4B7d0C3f6", 1_000_000_000_000_000_000L, block + 100, System.currentTimeMillis());
+        boolean valid = SenseiSamuraWalletProtection.isValidAddressFormat(primary);
+        int blocksPerDay = SenseiSamuraWalletProtection.getBlocksPerDay();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VALIDATION RUNNER (batch validate addresses and amounts)
+// -----------------------------------------------------------------------------
+
+final class SamuraValidationRunner {
+    static boolean validatePrimary(String addr) { return SamuraValidationSuite.validateAddress(addr); }
+    static boolean validateGuardian(String addr) { return addr != null && SamuraValidationSuite.validateAddress(addr); }
+    static boolean validateRecoveryTarget(String addr) { return SamuraValidationSuite.validateAddress(addr); }
+    static boolean validateSpendAmount(long wei) { return SamuraValidationSuite.validateAmountWei(wei); }
+    static int passphraseStrength(String p) { return SamuraValidationSuite.strengthScore(p); }
+    static boolean validateHash(byte[] h) { return SamuraValidationSuite.validateHash(h); }
+    static long clampDaily(long v) { return SamuraConfigBounds.clampDailyCap(v); }
